@@ -3,7 +3,6 @@ Matrix Breaker Pre-Market Brief
 Mon-Fri 2:45 AM Puerto Rico via GitHub Actions
 """
 
-import yfinance as yf
 import requests
 import smtplib
 import os
@@ -18,11 +17,11 @@ GMAIL_PASS = os.environ["GMAIL_APP_PASSWORD"]
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 PR_TZ = timezone(timedelta(hours=-4))
 
-TICKERS = {
-    "XAUUSD": "GC=F",
-    "GER40": "^GDAXI",
-    "NAS100": "^NDX",
-    "DXY": "DX-Y.NYB"
+TD_SYMBOLS = {
+    "XAUUSD": "XAU/USD",
+    "GER40":  "DAX",
+    "NAS100": "NDX",
+    "DXY":    "DXY",
 }
 
 PSYCH_TIPS = [
@@ -71,33 +70,46 @@ QUOTES = [
 
 
 def get_market_data():
+    API_KEY = os.environ.get("TWELVE_DATA_API_KEY", "")
     data = {}
-    for name, ticker in TICKERS.items():
+    for name, symbol in TD_SYMBOLS.items():
         try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="25d", interval="1d")
-            if len(hist) >= 2:
-                curr = hist['Close'].iloc[-1]
-                prev = hist['Close'].iloc[-2]
-                ema20 = hist['Close'].ewm(span=20).mean().iloc[-1]
-                change_pct = ((curr - prev) / prev) * 100
-                bias = "BULL ↑" if curr > ema20 else "BEAR ↓"
-                bias_color = "#00FF88" if "BULL" in bias else "#FF3B3B"
-                data[name] = {
-                    "price": round(curr, 2),
-                    "change_pct": round(change_pct, 2),
-                    "high": round(hist['High'].iloc[-1], 2),
-                    "low": round(hist['Low'].iloc[-1], 2),
-                    "bias": bias,
-                    "bias_color": bias_color,
-                    "ema20": round(ema20, 2)
-                }
-        except Exception as e:
-            print(f"⚠️ Error fetching {name}: {e}")
+            # Quote endpoint — price, high, low, previous_close
+            q_url = (
+                f"https://api.twelvedata.com/quote"
+                f"?symbol={symbol}&apikey={API_KEY}"
+            )
+            q = requests.get(q_url, timeout=10).json()
+
+            # EMA(20) endpoint — daily
+            ema_url = (
+                f"https://api.twelvedata.com/ema"
+                f"?symbol={symbol}&interval=1day&time_period=20&apikey={API_KEY}"
+            )
+            ema_data = requests.get(ema_url, timeout=10).json()
+            ema20 = float(ema_data["values"][0]["ema"]) if "values" in ema_data else 0
+
+            price = float(q.get("close", 0))
+            prev  = float(q.get("previous_close", price))
+            change_pct = ((price - prev) / prev) * 100 if prev else 0
+            bias = "BULL UP" if price > ema20 else "BEAR DOWN"
+            bias_color = "#00FF88" if "BULL" in bias else "#FF3B3B"
+
             data[name] = {
-                "price": "N/A", "bias": "NEUTRAL →",
+                "price":      round(price, 2),
+                "change_pct": round(change_pct, 2),
+                "high":       float(q.get("high", 0)),
+                "low":        float(q.get("low",  0)),
+                "bias":       bias,
+                "bias_color": bias_color,
+                "ema20":      round(ema20, 2),
+            }
+        except Exception as e:
+            print(f"Error fetching {name} ({symbol}): {e}")
+            data[name] = {
+                "price": "N/A", "bias": "NEUTRAL",
                 "bias_color": "#FFD700", "change_pct": 0,
-                "high": "N/A", "low": "N/A", "ema20": "N/A"
+                "high": "N/A", "low": "N/A", "ema20": "N/A",
             }
     return data
 
