@@ -41,10 +41,23 @@ const BIASES = [
   { instrument: "NAS", bias: "→ NEUT", color: "#FFD700" },
 ];
 
+function todayKey() { return new Date().toISOString().slice(0, 10); }
+
 export default function Home({ onNavigate, weekStats }) {
   const [time, setTime] = useState(getPRTime());
   const [next, setNext] = useState(getNextKillzone());
   const [active, setActive] = useState(isActiveKillzone());
+  const [pendingTrade, setPendingTrade] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("mb_pending_trade") || "null"); } catch { return null; }
+  });
+  const [needsDebrief, setNeedsDebrief] = useState(() => {
+    try {
+      const trades = JSON.parse(localStorage.getItem("mb_trades") || "[]");
+      const todayTrades = trades.filter(t => (t.timestamp || t.closedAt || "").startsWith(todayKey()));
+      const session = JSON.parse(localStorage.getItem(`mb_sessions:${todayKey()}`) || "null");
+      return todayTrades.length > 0 && !session?.submitted;
+    } catch { return false; }
+  });
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -69,6 +82,26 @@ export default function Home({ onNavigate, weekStats }) {
       <MatrixRain opacity={0.04} />
 
       <div style={{ position: "relative", zIndex: 1, padding: "32px 20px 0" }}>
+
+        {/* BANNER: pending trade result */}
+        {pendingTrade && (
+          <div style={{ background: "rgba(255,140,0,0.1)", border: "1px solid rgba(255,140,0,0.35)", borderRadius: 10, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ color: "#FF8C00", fontSize: 9, letterSpacing: 2, fontFamily: "'Orbitron', monospace" }}>TRADE RESULT PENDING</div>
+              <div style={{ color: "#B0B0C0", fontSize: 12, marginTop: 2 }}>{pendingTrade.instrument} {pendingTrade.direction} @ {pendingTrade.entry}</div>
+            </div>
+            <button onClick={() => onNavigate("logresult")} style={{ background: "rgba(255,140,0,0.2)", border: "1px solid rgba(255,140,0,0.5)", borderRadius: 7, padding: "7px 12px", cursor: "pointer", fontFamily: "'Orbitron', monospace", fontSize: 9, color: "#FF8C00", letterSpacing: 1 }}>LOG RESULT</button>
+          </div>
+        )}
+
+        {/* BANNER: session debrief needed */}
+        {needsDebrief && !pendingTrade && (
+          <div style={{ background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ color: "#00D4FF", fontSize: 9, letterSpacing: 2, fontFamily: "'Orbitron', monospace" }}>LOG SESSION DEBRIEF</div>
+            <button onClick={() => onNavigate("postsession")} style={{ background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.4)", borderRadius: 7, padding: "7px 12px", cursor: "pointer", fontFamily: "'Orbitron', monospace", fontSize: 9, color: "#00D4FF", letterSpacing: 1 }}>LOG NOW</button>
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{

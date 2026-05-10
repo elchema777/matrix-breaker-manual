@@ -2,11 +2,16 @@ import { useState } from "react";
 import { createTradeEntry } from "../services/notion";
 
 export default function TradeLogger({ preData, onNavigate }) {
-  const [instrument, setInstrument] = useState(preData?.instrument || "XAUUSD");
-  const [direction, setDirection] = useState("LONG");
-  const [entry, setEntry] = useState("");
-  const [sl, setSl] = useState("");
-  const [tp, setTp] = useState("");
+  // Merge preData with any AI analyzer prefill
+  const aiPrefill = (() => { try { return JSON.parse(localStorage.getItem("mb_ai_prefill") || "null"); } catch { return null; } })();
+  const merged = aiPrefill ? { ...aiPrefill, ...preData } : preData;
+  if (aiPrefill) localStorage.removeItem("mb_ai_prefill");
+
+  const [instrument, setInstrument] = useState(merged?.instrument || "XAUUSD");
+  const [direction, setDirection] = useState(merged?.direction || "LONG");
+  const [entry, setEntry] = useState(merged?.entry ? String(merged.entry) : "");
+  const [sl,    setSl]    = useState(merged?.sl    ? String(merged.sl)    : "");
+  const [tp,    setTp]    = useState(merged?.tp    ? String(merged.tp)    : "");
   const [beforeImg, setBeforeImg] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState("");
@@ -46,13 +51,18 @@ export default function TradeLogger({ preData, onNavigate }) {
         timestamp: new Date().toISOString()
       };
       await createTradeEntry(data);
-      showToast(`✅ Trade logged — ${tradeId}`);
+      // Save pending trade so Home shows "awaiting result" banner
+      localStorage.setItem("mb_pending_trade", JSON.stringify({ tradeId, instrument, direction, entry: entryN, sl: slN, tp: tpN, rr }));
+      showToast(`Trade logged — ${tradeId}`);
       setTimeout(() => onNavigate("home"), 2000);
     } catch (e) {
-      showToast("⚠️ Notion offline — saved locally");
+      showToast("Notion offline — saved locally");
       const saved = JSON.parse(localStorage.getItem("mb_trades") || "[]");
-      saved.push({ instrument, direction, entry, sl, tp, rr, beforeImg: beforeImg?.preview });
+      const tradeId = `MB-${Date.now()}`;
+      const newTrade = { tradeId, instrument, direction, entry: entryN, sl: slN, tp: tpN, rr, beforeImg: beforeImg?.preview, timestamp: new Date().toISOString() };
+      saved.push(newTrade);
       localStorage.setItem("mb_trades", JSON.stringify(saved));
+      localStorage.setItem("mb_pending_trade", JSON.stringify({ tradeId, instrument, direction, entry: entryN, sl: slN, tp: tpN, rr }));
     }
     setSubmitting(false);
   };
